@@ -1,12 +1,12 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     ops::Deref,
     sync::{Arc, Mutex},
-    thread::JoinHandle,
 };
 
+use ::tokio::sync::mpsc;
 use evm_rpc::{error::into_native_error, Bytes, Hex, RPCTransaction};
-use evm_state::{Address, TransactionAction, H256, U256};
+use evm_state::{Address, TransactionAction, H160, H256, U256};
 use log::*;
 use serde_json::json;
 use solana_client::{rpc_config::RpcSendTransactionConfig, rpc_request::RpcRequest};
@@ -29,34 +29,6 @@ use txpool::{
 
 use crate::{from_client_error, send_and_confirm_transactions, EvmBridge, EvmResult};
 
-type UnixTimeMs = u64;
-
-/// Pause in milliseconds between the end of deploying previous and the beginning
-/// of the next transaction from the same sender
-const PAUSE_MS: u64 = 15000;
-
-/// Delay in seconds before next cleanup of outdated entries from hashmap of
-/// last deployed transactions
-const CLEANUP_DELAY_SEC: u64 = 86400; // = 24 hours
-
-/// Abstracting the time source for the testing purposes
-pub trait Clock: Send + Sync {
-    fn now(&self) -> UnixTimeMs;
-}
-
-/// Real clock used for production
-pub struct SystemClock;
-
-impl Clock for SystemClock {
-    fn now(&self) -> UnixTimeMs {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
-    }
-}
-
 struct AlwaysReady;
 
 impl<T> Ready<T> for AlwaysReady {
@@ -65,23 +37,15 @@ impl<T> Ready<T> for AlwaysReady {
     }
 }
 
-pub struct EthPool<C: Clock> {
+pub struct EthPool {
     /// Pool of transactions awaiting to be deployed
     pool: Mutex<Pool<PooledTransaction, MyScoring, NoopListener>>,
-
-    /// Timestamps of the last deployed transactions
-    last_entry: Mutex<HashMap<Address, UnixTimeMs>>,
-
-    /// Clock used to determine whether transaction is stalled or ready to be deployed
-    clock: C,
 }
 
-impl<C: Clock> EthPool<C> {
-    pub fn new(clock: C) -> Self {
+impl EthPool {
+    pub fn new() -> Self {
         Self {
             pool: Mutex::new(Pool::new(NoopListener, MyScoring, Default::default())),
-            last_entry: Mutex::new(HashMap::new()),
-            clock,
         }
     }
 
@@ -93,15 +57,9 @@ impl<C: Clock> EthPool<C> {
         self.pool.lock().unwrap().import(tx, &MyScoring)
     }
 
-    /// Removes transaction from the pool and stalls next transactions from the same sender
+    /// Removes transaction from the pool
     pub fn remove(&self, hash: &H256) -> Option<Arc<PooledTransaction>> {
-        let mut pool = self.pool.lock().unwrap();
-        let removed = pool.remove(hash, false);
-        if let Some(removed) = &removed {
-            let mut last_entry = self.last_entry.lock().unwrap();
-            last_entry.insert(removed.sender, self.clock.now());
-        }
-        removed
+        self.pool.lock().unwrap().remove(hash, false)
     }
 
     /// Used for a special case when the transaction was replaced at a time when the worker was already processing it
@@ -120,23 +78,11 @@ impl<C: Clock> EthPool<C> {
 
     /// Gets reference to the next transaction in queue ready to be deployed
     pub fn pending(&self) -> Option<Arc<PooledTransaction>> {
-        let pool = self.pool.lock().unwrap();
-        let last_entry = self.last_entry.lock().unwrap();
-
-        pool.pending(
-            |tx: &PooledTransaction| {
-                if let Some(processed) = last_entry.get(&tx.sender) {
-                    if (self.clock.now() - processed) >= PAUSE_MS {
-                        return Readiness::Ready;
-                    } else {
-                        return Readiness::Stale;
-                    }
-                }
-                Readiness::Ready
-            },
-            H256::zero(),
-        )
-        .next()
+        self.pool
+            .lock()
+            .unwrap()
+            .pending(AlwaysReady, H256::zero())
+            .next()
     }
 
     /// Returns nonce from transaction pool, on `None` if the pool doesn't contain
@@ -159,30 +105,22 @@ impl<C: Clock> EthPool<C> {
         let pool = self.pool.lock().unwrap();
         pool.find(&tx_hash.0)
     }
-
-    /// Strip outdated timestamps, returns amount of elements in collection before and after the strip
-    pub fn strip_outdated(&self) -> (usize, usize) {
-        let now = self.clock.now();
-        let mut last_entry = self.last_entry.lock().unwrap();
-        let before_strip = last_entry.len();
-        last_entry.retain(|_, timestamp| *timestamp + PAUSE_MS > now);
-        let after_strip = last_entry.len();
-        (before_strip, after_strip)
-    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PooledTransaction {
     pub inner: evm::Transaction,
     pub meta_keys: HashSet<Pubkey>,
     sender: Address,
     hash: H256,
+    hash_sender: mpsc::Sender<EvmResult<Hex<H256>>>,
 }
 
 impl PooledTransaction {
     pub fn new(
         transaction: evm::Transaction,
         meta_keys: HashSet<Pubkey>,
+        hash_sender: mpsc::Sender<EvmResult<Hex<H256>>>,
     ) -> Result<Self, evm_state::error::Error> {
         let hash = transaction.tx_id_hash();
         let sender = transaction.caller()?;
@@ -192,6 +130,7 @@ impl PooledTransaction {
             sender,
             hash,
             meta_keys,
+            hash_sender,
         })
     }
 }
@@ -266,28 +205,33 @@ impl ShouldReplace<PooledTransaction> for MyScoring {
 }
 
 /// This worker checks for new transactions in pool and tries to deploy them
-pub fn worker_deploy(bridge: Arc<EvmBridge>) -> JoinHandle<()> {
-    std::thread::spawn(move || loop {
+pub async fn worker_deploy(bridge: Arc<EvmBridge>) {
+    loop {
         let tx = bridge.pool.pending();
 
-        if let Some(tx) = tx {
-            let tx = (*tx).clone();
-            let hash = tx.hash;
-            let nonce = tx.nonce;
-            let sender = tx.sender;
+        if let Some(pooled_tx) = tx {
+            let hash = pooled_tx.hash;
+            let nonce = pooled_tx.nonce;
+            let sender = pooled_tx.sender;
+            let meta_keys = pooled_tx.meta_keys.clone();
+            let tx = (*pooled_tx).clone();
             info!(
                 "Pool worker is trying to deploy tx with = {:?} [tx = {:?}]",
-                &hash, *tx
+                &hash, tx
             );
-            match process_tx(bridge.clone(), tx) {
+            match process_tx(bridge.clone(), tx, hash, sender, meta_keys) {
                 Ok(hash) => {
                     info!("Tx with hash = {:?} processed successfully", &hash);
+                    let _result = pooled_tx.hash_sender.send(Ok(hash)).await;
                 }
+                // IF (error recoverable ) { /* just stall, skip remove */ }
+                // else { stall, do remove }
                 Err(e) => {
                     warn!(
                         "Something went wrong in tx processing with hash = {:?}. Error = {:?}",
-                        &hash, e
+                        &hash, &e
                     );
+                    let _result = pooled_tx.hash_sender.send(Err(e)).await;
                 }
             }
             match bridge.pool.remove(&hash) {
@@ -305,33 +249,21 @@ pub fn worker_deploy(bridge: Arc<EvmBridge>) -> JoinHandle<()> {
                     }
                 }
             }
+            // tx.channel_sender_notify(result: EvmResult<Hex<H256>>)
         } else {
             trace!("pool worker is idling...");
-            std::thread::sleep(std::time::Duration::from_millis(100));
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         }
-    })
+    }
 }
 
-pub fn worker_cleaner(bridge: Arc<EvmBridge>) -> JoinHandle<()> {
-    const CLEANUP_DELAY: std::time::Duration = std::time::Duration::from_secs(CLEANUP_DELAY_SEC);
-
-    std::thread::spawn(move || loop {
-        std::thread::sleep(CLEANUP_DELAY);
-
-        let (before_strip, after_strip) = bridge.pool.strip_outdated();
-        info!("Cleanup of outdated `last deployed` infos. Entries before cleanup: {}, after cleanup: {}", before_strip, after_strip);
-    })
-}
-
-fn process_tx(bridge: Arc<EvmBridge>, tx: PooledTransaction) -> EvmResult<Hex<H256>> {
-    let PooledTransaction {
-        inner,
-        mut meta_keys,
-        sender,
-        hash,
-    } = tx;
-    let tx = inner;
-
+fn process_tx(
+    bridge: Arc<EvmBridge>,
+    tx: evm_state::Transaction,
+    hash: H256,
+    sender: H160,
+    mut meta_keys: HashSet<Pubkey>,
+) -> EvmResult<Hex<H256>> {
     let bytes = bincode::serialize(&tx).unwrap();
 
     let rpc_tx = RPCTransaction::from_transaction(tx.clone().into())?;
@@ -583,18 +515,6 @@ mod tests {
 
     static SK1: [u8; 32] = [1u8; 32];
     static SK2: [u8; 32] = [2u8; 32];
-    static SK3: [u8; 32] = [3u8; 32];
-
-    /// Test clock used for unit-testing
-    pub struct TestClock {
-        now: u64,
-    }
-
-    impl Clock for Arc<Mutex<TestClock>> {
-        fn now(&self) -> UnixTimeMs {
-            self.lock().unwrap().now
-        }
-    }
 
     #[test]
     fn test_pending_queuing() {
@@ -644,47 +564,8 @@ mod tests {
     }
 
     #[test]
-    fn test_delay_transaction_from_same_sender() {
-        let test_clock = Arc::new(Mutex::new(TestClock { now: 0 }));
-
-        let pool = EthPool::new(test_clock.clone());
-
-        pool.import(test_tx(1, 100, "11", &SK1)).unwrap();
-        pool.import(test_tx(2, 100, "22", &SK1)).unwrap();
-        pool.import(test_tx(1, 100, "33", &SK2)).unwrap();
-        pool.import(test_tx(2, 100, "44", &SK2)).unwrap();
-        pool.import(test_tx(1, 100, "55", &SK3)).unwrap();
-
-        let next = pool.pending().unwrap();
-        assert_eq!(next.input, "11".as_bytes());
-        assert_eq!(pool.strip_outdated(), (0, 0));
-
-        pool.remove(&next.hash);
-        assert_eq!(pool.strip_outdated(), (1, 1));
-
-        let next = pool.pending().unwrap();
-        assert_eq!(next.input, "33".as_bytes());
-
-        pool.remove(&next.hash);
-        assert_eq!(pool.strip_outdated(), (2, 2));
-
-        let next = pool.pending().unwrap();
-        assert_eq!(next.input, "55".as_bytes());
-
-        pool.remove(&next.hash);
-        assert_eq!(pool.strip_outdated(), (3, 3));
-
-        assert!(pool.pending().is_none());
-
-        test_clock.lock().unwrap().now += PAUSE_MS;
-
-        assert_eq!(pool.pending().unwrap().input, "22".as_bytes());
-        assert_eq!(pool.strip_outdated(), (3, 0));
-    }
-
-    #[test]
     fn test_removing_replaced_transaction() {
-        let pool = EthPool::new(SystemClock);
+        let pool = EthPool::new();
 
         pool.import(test_tx(1, 100, "11", &SK1)).unwrap();
 
@@ -724,7 +605,8 @@ mod tests {
 
         let secret_key: evm_state::SecretKey = evm::SecretKey::from_slice(secret_key).unwrap();
 
-        PooledTransaction::new(tx_create.sign(&secret_key, Some(111)), HashSet::new()).unwrap()
+        let (tx, _) = mpsc::channel(1);
+        PooledTransaction::new(tx_create.sign(&secret_key, Some(111)), HashSet::new(), tx).unwrap()
     }
 
     fn import(pool: &mut Pool, tx: PooledTransaction) {
