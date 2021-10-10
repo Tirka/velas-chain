@@ -206,6 +206,9 @@ impl ShouldReplace<PooledTransaction> for MyScoring {
 
 /// This worker checks for new transactions in pool and tries to deploy them
 pub async fn worker_deploy(bridge: Arc<EvmBridge>) {
+    let recoverable =
+        regex::Regex::new(r#"Transaction nonce [\d]+ differs from nonce in state [\d]+"#).unwrap();
+
     loop {
         let tx = bridge.pool.pending();
 
@@ -224,32 +227,42 @@ pub async fn worker_deploy(bridge: Arc<EvmBridge>) {
                     info!("Tx with hash = {:?} processed successfully", &hash);
                     let _result = pooled_tx.hash_sender.send(Ok(hash)).await;
                 }
-                // IF (error recoverable ) { /* just stall, skip remove */ }
-                // else { stall, do remove }
                 Err(e) => {
+                    if matches!(&e, evm_rpc::Error::ProxyRpcError { source } if recoverable.is_match(&source.message))
+                    {
+                        continue;
+                    }
+
+                    // Something went wrong in tx processing with hash = 0x125b3fe91bc2c49e4ad9925e23a1b8939a031b3f4222faf99f0a285a4ab03b1b.
+                    // Error = ProxyRpcError {
+                    //     source: Error {
+                    //         code: ServerError(1002),
+                    //         message: "Error in evm processing layer: Transaction nonce 1687 differs from nonce in state 1686",
+                    //         data: Some(String("Transaction nonce 1687 differs from nonce in state 1686"))
+                    //     }
+                    // }
                     warn!(
                         "Something went wrong in tx processing with hash = {:?}. Error = {:?}",
                         &hash, &e
                     );
+
                     let _result = pooled_tx.hash_sender.send(Err(e)).await;
-                }
-            }
-            match bridge.pool.remove(&hash) {
-                Some(tx) => {
-                    info!("Tx with has = {:?} removed from the pool", tx.hash)
-                }
-                None => {
-                    match bridge.pool.remove_by_nonce(&sender, nonce) {
-                        Some(dup_tx) => {
-                            info!("Tx was replaced during deploy, duplicate tx with hash = {} removed", dup_tx.hash);
+
+                    match bridge.pool.remove(&hash) {
+                        Some(tx) => {
+                            info!("Tx with hash = {:?} removed from the pool", tx.hash)
                         }
-                        None => {
-                            warn!("Transaction from the pool dissapeared mysteriously...")
-                        }
+                        None => match bridge.pool.remove_by_nonce(&sender, nonce) {
+                            Some(dup_tx) => {
+                                info!("Tx was replaced during deploy, duplicate tx with hash = {} removed", dup_tx.hash);
+                            }
+                            None => {
+                                warn!("Transaction from the pool dissapeared mysteriously...")
+                            }
+                        },
                     }
                 }
             }
-            // tx.channel_sender_notify(result: EvmResult<Hex<H256>>)
         } else {
             trace!("pool worker is idling...");
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
