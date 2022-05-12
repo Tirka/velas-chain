@@ -19,132 +19,168 @@ pub async fn restore_chain(
     rpc_address: String,
     modify_ledger: bool,
     force_resume: bool,
-    output_dir: Option<String>,
+    json_path: Option<String>,
+    load_json: bool,
 ) -> Result<()> {
     let rpc_client = RpcClient::new(rpc_address);
+    let json_path = json_path.map(|json_path|{
+        let json_file_path = PathBuf::from(json_path);
+        // Assume all errors as File not exist
+        let metadata = std::fs::metadata(&json_file_path).ok();
+        (json_file_path, metadata)
+    });
 
-    let mut header_template = ledger
-        .get_evm_confirmed_block_header(evm_missing.first - 1)
-        .await
-        .context(format!(
-            "Unable to get EVM block header {}",
-            evm_missing.first - 1
-        ))?;
-
-    let head = ledger
+    let tail = ledger
         .get_evm_confirmed_block_header(evm_missing.last + 1)
         .await
         .context(format!(
             "Unable to get EVM block header {}",
             evm_missing.last + 1
         ))?;
+    let restored_blocks = if load_json {
+        let (json_file_path, metadata) = json_path.clone().ok_or(format_err!("in load-json mode json file is mandatory"))?;
+        
+        log::info!("Recovering blocks from file {:?}", json_file_path);
+        
+        ensure!(!matches!(&metadata, Some(m) if m.is_dir() ), "Json path already exist, cannot overwrite it.");
+        let json_file = std::fs::File::open(&json_file_path).context(format!(
+            "Unable to open json {:?}",
+            json_file_path
+        ))?;
+        serde_json::from_reader(json_file).context(format!(
+            "Unable to read file as valid json {:?}",
+            json_file_path 
+        ))?
 
-    let mut native_blocks = vec![];
+    } else {
 
-    for slot in header_template.native_chain_slot + 1..head.native_chain_slot {
-        let native_block = ledger
-            .get_confirmed_block(slot)
+        let mut header_template = ledger
+            .get_evm_confirmed_block_header(evm_missing.first - 1)
             .await
-            .context(format!("Unable to get Native Block {}", slot))?;
-        native_blocks.push(native_block);
-    }
+            .context(format!(
+                "Unable to get EVM block header {}",
+                evm_missing.first - 1
+            ))?;
 
-    let timestamps = crate::timestamp::load_timestamps().unwrap();
-    let mut restored_blocks = vec![];
+        let mut native_blocks = vec![];
 
-    for nb in native_blocks.into_iter() {
-        let parsed_instructions = nb.parse_instructions();
-        if !parsed_instructions.only_trivial_instructions {
-            return Err(anyhow!(
-                "Native block {} contains non-trivial instructions",
-                nb.block_height.unwrap()
-            ));
-        }
-        header_template.parent_hash = header_template.hash();
-        header_template.native_chain_slot += 1;
-        header_template.native_chain_hash =
-            H256(Pubkey::from_str(&nb.blockhash).unwrap().to_bytes());
-        header_template.block_number += 1;
-        header_template.timestamp = *timestamps.get(&header_template.block_number).unwrap();
-
-        let txs: Vec<(RPCTransaction, Vec<String>)> = parsed_instructions
-            .instructions
-            .iter()
-            .map(|v| match v {
-                EvmInstruction::EvmTransaction { evm_tx } => (
-                    RPCTransaction::from_transaction(TransactionInReceipt::Signed(evm_tx.clone()))
-                        .unwrap(),
-                    Vec::<String>::new(),
-                ),
-                _ => unreachable!(),
-            })
-            .collect();
-
-        let last_hashes: Vec<H256> = vec![H256::zero(); 256];
-        let state_root = header_template.state_root;
-        let (restored_block, warns) =
-            request_restored_block(&rpc_client, txs, last_hashes, header_template, state_root)
+        for slot in header_template.native_chain_slot + 1..tail.native_chain_slot {
+            let native_block = ledger
+                .get_confirmed_block(slot)
                 .await
-                .unwrap();
+                .context(format!("Unable to get Native Block {}", slot))?;
+            native_blocks.push(native_block);
+        }
 
-        header_template = restored_block.header.clone();
+        let timestamps = crate::timestamp::load_timestamps().unwrap();
+        let mut restored_blocks = vec![];
 
-        match (warns, force_resume) {
-            (warns, _) if warns.len() == 0 => {
-                log::info!(
-                    "EVM Block {} (slot {}) restored with no warnings",
-                    &restored_block.header.block_number,
-                    header_template.native_chain_slot
-                );
-                restored_blocks.push(restored_block);
+        for nb in native_blocks.into_iter() {
+            let parsed_instructions = nb.parse_instructions();
+            if !parsed_instructions.only_trivial_instructions {
+                return Err(anyhow!(
+                    "Native block {} contains non-trivial instructions",
+                    nb.block_height.unwrap()
+                ));
             }
-            (warns, false) => {
-                log::error!(
-                    "Unable to restore EVM block {} (slot {})",
-                    &restored_block.header.block_number,
-                    header_template.native_chain_slot
-                );
-                log::error!("Failed transactions {:?}", &warns);
-                return Err(anyhow!("Block restore failed: try `--force-resume` mode"));
-            }
-            (warns, true) => {
-                log::warn!(
-                    "EVM Block {} (slot {}) restored with warnings",
-                    &restored_block.header.block_number,
-                    header_template.native_chain_slot
-                );
-                log::warn!("Failed transactions: {:?}", &warns);
-                restored_blocks.push(restored_block);
+            header_template.parent_hash = header_template.hash();
+            header_template.native_chain_slot += 1;
+            header_template.native_chain_hash =
+                H256(Pubkey::from_str(&nb.blockhash).unwrap().to_bytes());
+            header_template.block_number += 1;
+            header_template.timestamp = *timestamps.get(&header_template.block_number).unwrap();
+
+            let txs: Vec<(RPCTransaction, Vec<String>)> = parsed_instructions
+                .instructions
+                .iter()
+                .map(|v| match v {
+                    EvmInstruction::EvmTransaction { evm_tx } => (
+                        RPCTransaction::from_transaction(TransactionInReceipt::Signed(evm_tx.clone()))
+                            .unwrap(),
+                        Vec::<String>::new(),
+                    ),
+                    _ => unreachable!(),
+                })
+                .collect();
+
+            let last_hashes: Vec<H256> = vec![H256::zero(); 256];
+            let state_root = header_template.state_root;
+            let (restored_block, warns) =
+                request_restored_block(&rpc_client, txs, last_hashes, header_template, state_root)
+                    .await
+                    .unwrap();
+
+            header_template = restored_block.header.clone();
+
+            match (warns, force_resume) {
+                (warns, _) if warns.len() == 0 => {
+                    log::info!(
+                        "EVM Block {} (slot {}) restored with no warnings",
+                        &restored_block.header.block_number,
+                        header_template.native_chain_slot
+                    );
+                    restored_blocks.push(restored_block);
+                }
+                (warns, false) => {
+                    log::error!(
+                        "Unable to restore EVM block {} (slot {})",
+                        &restored_block.header.block_number,
+                        header_template.native_chain_slot
+                    );
+                    log::error!("Failed transactions {:?}", &warns);
+                    return Err(anyhow!("Block restore failed: try `--force-resume` mode"));
+                }
+                (warns, true) => {
+                    log::warn!(
+                        "EVM Block {} (slot {}) restored with warnings",
+                        &restored_block.header.block_number,
+                        header_template.native_chain_slot
+                    );
+                    log::warn!("Failed transactions: {:?}", &warns);
+                    restored_blocks.push(restored_block);
+                }
             }
         }
-    }
+        restored_blocks
+    };
 
     log::info!("{} blocks restored.", restored_blocks.len());
     log::debug!("{:?}", &restored_blocks);
 
-    if head.parent_hash != restored_blocks.iter().last().unwrap().header.hash() {
+    if tail.parent_hash != restored_blocks.iter().last().unwrap().header.hash() {
         log::error!("❌❌❌ Hashes do not match! ❌❌❌");
         return Ok(());
     }
 
     log::info!("✅✅✅ Hashes match! ✅✅✅");
 
-    if let Some(output_dir) = output_dir {
-        let unixtime = SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_secs();
+    if !load_json {
+        if let Some((json_path, metadata)) = json_path {
+            
+            let output_file = if let Some(metadata) = metadata {
+                if metadata.is_file() {
+                    bail!("File {:?}, already exist, cannot overwrite", json_path)
+                }
+                let unixtime = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                
 
-        let blocks_path = PathBuf::new().join(&output_dir).join(format!(
-            "restored-blocks-{}-{}-{}.json",
-            evm_missing.first, evm_missing.last, unixtime
-        ));
+                json_path.join(format!(
+                    "restored-blocks-{}-{}-{}.json",
+                    evm_missing.first, evm_missing.last, unixtime
+                ))
+            } else {
+                json_path
+            };
 
-        std::fs::write(
-            blocks_path,
-            serde_json::to_string(&restored_blocks).unwrap(),
-        )
-        .unwrap();
+            std::fs::write(
+                output_file,
+                serde_json::to_string(&restored_blocks).unwrap(),
+            )
+            .unwrap();
+        }
     }
 
     if modify_ledger {

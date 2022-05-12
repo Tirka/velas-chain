@@ -50,9 +50,15 @@ enum Commands {
         #[clap(short = 'r', long)]
         force_resume: bool,
 
-        /// Writes restored EVM Blocks as JSON to directory if set
-        #[clap(short, long, value_name = "DIR")]
-        output_dir: Option<String>,
+        /// Load block from JSON instead
+        #[clap(long)]
+        load_json: bool,
+        
+        /// Path to json file, to load EVM Blocks from (if load_json set).
+        /// Or path to json file/folder where to save recovered blocks.
+        #[clap(short, long, value_name = "JSON_PATH")]
+        json_path: Option<String>,
+
     },
 
     /// Checks contents of Native Block
@@ -85,7 +91,8 @@ async fn main() -> anyhow::Result<()> {
             rpc_address,
             modify_ledger,
             force_resume,
-            output_dir,
+            json_path,
+            load_json,
         } => {
             routines::restore_chain(
                 &ledger,
@@ -93,7 +100,8 @@ async fn main() -> anyhow::Result<()> {
                 rpc_address,
                 modify_ledger,
                 force_resume,
-                output_dir,
+                json_path,
+                load_json,
             )
             .await?
         }
