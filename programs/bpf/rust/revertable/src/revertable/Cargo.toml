@@ -1,0 +1,18 @@
+[package]
+name = "revertable"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+solana-evm-loader-program = { path = "../../../../../../evm-utils/programs/evm_loader" }
+solana-sdk = { path = "../../../../../../sdk" }
+solana-program = { path = "../../../../../../sdk/program" }
+primitive-types = "0.8.0"
+tokio = { version = "1", features = ["full"]}
+
+[dev-dependencies]
+solana-program-test = { path = "../../../../../../program-test" }
+
+[lib]
+name = "revertable"
+crate-type = ["lib", "cdylib"]
