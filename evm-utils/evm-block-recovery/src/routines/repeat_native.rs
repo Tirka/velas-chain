@@ -87,7 +87,6 @@ pub async fn repeat_native(
         };
 
         receiver.for_each_concurrent(WRITERS_POOL, |(dst, message)| async move {
-
             let ConfirmedBlockWithOptionalMetadata {
                 previous_blockhash,
                 blockhash,
@@ -149,7 +148,7 @@ pub async fn repeat_native(
                     // history.collect_upload_failure(message.block_number, error_msg);
                 }
             }
-        })
+        }).await
     });
 
     for (idx, block_number) in blocks_to_repeat.into_iter().enumerate() {
