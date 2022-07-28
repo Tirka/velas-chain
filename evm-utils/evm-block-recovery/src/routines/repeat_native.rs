@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 
 use crate::routines::BlockMessage;
 
-static CHANNEL_MAX_MESSAGES: usize = 300;
+static CHANNEL_MAX_MESSAGES: usize = 80;
 static WRITERS_POOL: usize = 5;
 
 #[derive(Debug, Default)]
@@ -188,8 +188,8 @@ pub async fn repeat_native(
     log::info!("Reading complete, awaiting tasks to finish...");
 
     // let history = writer.await.context("Writer job terminated with error")?;
+    writer.await.unwrap();
     let history = History::default(); // FIXME: collect actual history
-    let a = writer.await.unwrap();
 
     log::info!("Successful writes total: {}", history.oks.len());
 
