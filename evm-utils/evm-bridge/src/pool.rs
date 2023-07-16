@@ -17,8 +17,7 @@ use log::*;
 use once_cell::sync::Lazy;
 use serde_json::json;
 use solana_client::{
-    rpc_config::RpcSendTransactionConfig,
-    rpc_request::RpcRequest,
+    rpc_config::RpcSendTransactionConfig, rpc_request::RpcRequest,
     rpc_response::Response as RpcResponse,
 };
 use solana_evm_loader_program::{

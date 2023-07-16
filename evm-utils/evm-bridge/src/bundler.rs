@@ -1,10 +1,9 @@
-use std::sync::Arc;
-use log::error;
+use crate::bridge::{from_client_error, EvmBridge, EvmResult};
 use crate::rpc_client::AsyncRpcClient;
-use crate::bridge::{from_client_error, EvmResult, EvmBridge};
 use evm_rpc::bundler::UserOperation;
 use evm_rpc::{Bytes, Error, FormatHex, Hex, RPCTransaction};
 use evm_state::{Address, Gas};
+use log::error;
 use primitive_types::{H256, U256};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use serde::{Deserialize, Serialize};
@@ -13,6 +12,7 @@ use snafu::ResultExt;
 use solana_client::client_error::ClientErrorKind;
 use solana_client::rpc_request::{RpcError, RpcRequest, RpcResponseErrorData};
 use solana_evm_loader_program::scope::evm;
+use std::sync::Arc;
 
 type U48 = u64;
 

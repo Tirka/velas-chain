@@ -1,8 +1,8 @@
+use crate::bundler::Bundler;
 use crate::pool::{
     worker_cleaner, worker_deploy, worker_signature_checker, EthPool, PooledTransaction,
     SystemClock,
 };
-use crate::bundler::Bundler;
 use crate::rpc_client::AsyncRpcClient;
 use crate::tx_filter::TxFilter;
 
@@ -18,9 +18,9 @@ use std::{
 
 use borsh::BorshDeserialize;
 use derivative::*;
+use evm_rpc::bundler::UserOperation;
 use evm_rpc::error::{Error, *};
 use evm_rpc::*;
-use evm_rpc::bundler::UserOperation;
 use evm_state::*;
 use jsonrpc_http_server::jsonrpc_core::*;
 use log::*;
@@ -686,7 +686,9 @@ impl BundlerERPC for BundlerErpcImpl {
                 .estimate_handle_ops(&meta.rpc_client, &batch, entry_point)
                 .await?;
             // 4 - call execute
-            meta.get_bundler().send_user_ops(meta.clone(), &batch, entry_point, estimated_gas).await?;
+            meta.get_bundler()
+                .send_user_ops(meta.clone(), &batch, entry_point, estimated_gas)
+                .await?;
             Ok(Hex(user_operation.hash(entry_point, meta.evm_chain_id)))
         })
     }
@@ -1056,11 +1058,11 @@ pub(crate) fn from_client_error(client_error: ClientError) -> evm_rpc::Error {
     let client_error_kind = client_error.kind();
     match client_error_kind {
         ClientErrorKind::RpcError(solana_client::rpc_request::RpcError::RpcResponseError {
-                                      code,
-                                      message,
-                                      data,
-                                      original_err,
-                                  }) => {
+            code,
+            message,
+            data,
+            original_err,
+        }) => {
             match data {
                 // if transaction preflight, try to get last log messages, and return it as error.
                 RpcResponseErrorData::SendTransactionPreflightFailure(

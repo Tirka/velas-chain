@@ -1,6 +1,13 @@
 use borsh::BorshSerialize;
+use evm_rpc::bundler::UserOperation;
+use evm_rpc::Bytes;
 use evm_state::Address;
+use solana_evm_loader_program::instructions::FeePayerType;
+use solana_evm_loader_program::{
+    big_tx_allocate, big_tx_execute, big_tx_write, send_raw_tx, transfer_native_to_evm_ixs,
+};
 use solana_sdk::account::{AccountSharedData, WritableAccount};
+use solana_sdk::{bs58, system_instruction};
 use {
     bincode::serialize,
     evm_bridge::bridge::EvmBridge,
@@ -46,12 +53,6 @@ use {
     },
     tokio::runtime::Runtime,
 };
-use evm_rpc::bundler::UserOperation;
-use evm_rpc::Bytes;
-use solana_evm_loader_program::{big_tx_allocate, big_tx_execute, big_tx_write, send_raw_tx, transfer_native_to_evm_ixs};
-use solana_evm_loader_program::instructions::FeePayerType;
-use solana_sdk::{bs58, system_instruction};
-
 
 macro_rules! json_req {
     ($method: expr, $params: expr) => {{
@@ -160,7 +161,7 @@ fn test_test() {
         value: 0.into(),
         input: hex::decode(ENTRY_POINT_CONTRACT).unwrap(),
     }
-        .sign(&evm_secret_key, Some(chain_id));
+    .sign(&evm_secret_key, Some(chain_id));
     let entry_point_address = tx_create.address().unwrap();
 
     let mut tx_bytes = vec![];
@@ -185,7 +186,12 @@ fn test_test() {
     let allocate = big_tx_allocate(big_tx_storage.pubkey(), dbg!(tx_bytes.len()));
     let write1 = big_tx_write(big_tx_storage.pubkey(), 0, tx_bytes[..700].to_vec());
     let ixs = vec![allocate, write1];
-    let tx = Transaction::new_signed_with_payer(&ixs, Some(&alice.pubkey()), &[&big_tx_storage, &alice], blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &ixs,
+        Some(&alice.pubkey()),
+        &[&big_tx_storage, &alice],
+        blockhash,
+    );
     let serialized_encoded_tx = bs58::encode(serialize(&tx).unwrap()).into_string();
     let req = json_req!("sendTransaction", json!([serialized_encoded_tx]));
     let json = dbg!(post_rpc(req, &rpc_url));
@@ -195,7 +201,12 @@ fn test_test() {
     let write2 = big_tx_write(big_tx_storage.pubkey(), 700, tx_bytes[700..].to_vec());
     let execute = big_tx_execute(big_tx_storage.pubkey(), None, FeePayerType::Evm);
     let ixs = vec![write2, execute];
-    let tx = Transaction::new_signed_with_payer(&ixs, Some(&alice.pubkey()), &[&big_tx_storage, &alice], blockhash);
+    let tx = Transaction::new_signed_with_payer(
+        &ixs,
+        Some(&alice.pubkey()),
+        &[&big_tx_storage, &alice],
+        blockhash,
+    );
     let serialized_encoded_tx = bs58::encode(serialize(&tx).unwrap()).into_string();
     let req = json_req!("sendTransaction", json!([serialized_encoded_tx]));
     let json = dbg!(post_rpc(req, &rpc_url));
@@ -215,9 +226,12 @@ fn test_test() {
         paymaster_and_data: Bytes::from(Vec::new()),
         signature: Bytes::from(Vec::new()),
     };
-    let res = tokio_test::block_on(
-        bridge.get_bundler().simulate_user_op(bridge.get_rpc_client(), &user_op, entry_point_address)
-    ).unwrap();
+    let res = tokio_test::block_on(bridge.get_bundler().simulate_user_op(
+        bridge.get_rpc_client(),
+        &user_op,
+        entry_point_address,
+    ))
+    .unwrap();
     error!("{:?}", res);
 
     // assert!(false);
