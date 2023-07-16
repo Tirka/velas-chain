@@ -1722,11 +1722,8 @@ version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a19187fea3ac7e84da7dacf48de0c45d63c6a76f9490dae389aead16c243fce3"
 dependencies = [
- "atty",
- "humantime",
  "log 0.4.17",
  "regex",
- "termcolor",
 ]
 
 [[package]]
@@ -1949,7 +1946,7 @@ dependencies = [
  "bincode",
  "borsh",
  "derivative",
- "env_logger 0.8.4",
+ "env_logger 0.10.0",
  "evm-rpc",
  "evm-state",
  "hex",
