@@ -1094,7 +1094,7 @@ pub(crate) fn from_client_error(client_error: ClientError) -> evm_rpc::Error {
             }
         }
         _ => evm_rpc::Error::NativeRpcError {
-            details: format!("{:?}", client_error),
+            details: format!("{}", client_error),
             source: client_error.into(),
             verbose: false, // don't verbose native errors.
         },

@@ -164,7 +164,7 @@ async fn main(args: Args) -> StdResult<(), Box<dyn std::error::Error>> {
             .and_then(|rust_log| match rust_log.parse::<Targets>() {
                 Ok(targets) => Some(targets),
                 Err(e) => {
-                    eprintln!("failed to parse `RUST_LOG={:?}`: {}", rust_log, e);
+                    eprintln!("failed to parse `RUST_LOG={}`: {}", rust_log, e);
                     None
                 }
             })
