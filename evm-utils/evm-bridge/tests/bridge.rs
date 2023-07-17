@@ -120,7 +120,7 @@ fn wait_finalization(rpc_url: &str, signatures: &[&Value]) -> bool {
 ///
 #[test]
 fn test_test() {
-    solana_logger::setup();
+    solana_logger::setup_with("warn");
 
     let chain_id = 0xdead;
 
@@ -226,6 +226,7 @@ fn test_test() {
         paymaster_and_data: Bytes::from(Vec::new()),
         signature: Bytes::from(Vec::new()),
     };
+    //NOTE - Simulate validation
     let res = tokio_test::block_on(bridge.get_bundler().simulate_user_op(
         bridge.get_rpc_client(),
         &user_op,

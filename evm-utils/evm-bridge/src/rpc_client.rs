@@ -80,7 +80,7 @@ impl AsyncRpcClient {
         let request_json = request.build_request_json(request_id, params).to_string();
         match self._send_request(request_json).await {
             Ok(response) => {
-                let json: Value = response.json().await?;
+                let json: Value = dbg!(response.json().await?);
                 if dbg!(&json["error"]).is_object() {
                     match serde_json::from_value::<RpcErrorObject>(json["error"].clone()) {
                         Ok(rpc_error_object) => {
@@ -104,6 +104,7 @@ impl AsyncRpcClient {
                                 },
                                 rpc_custom_error::JSON_RPC_SERVER_ERROR_REVERTED => {
                                     match serde_json::from_value::<Bytes>(dbg!(&json["error"])["data"].clone()) {
+                                        // NOTE - Empty response["error"]["data"]
                                         Ok(bytes) => RpcResponseErrorData::Reverted { data: bytes.0 },
                                         Err(_err) => {
                                             RpcResponseErrorData::Empty

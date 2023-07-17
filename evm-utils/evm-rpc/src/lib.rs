@@ -924,6 +924,7 @@ pub mod bundler {
         pub max_priority_fee_per_gas: U256,
         pub paymaster_and_data: Bytes,
         pub signature: Bytes,
+        // missing field `to`???
     }
 
     impl UserOperation {

@@ -187,6 +187,7 @@ impl Bundler {
             })?;
         if let ClientErrorKind::RpcError(RpcError::RpcResponseError { data, .. }) = result.kind {
             if let RpcResponseErrorData::Reverted { data } = dbg!(data) {
+                // NOTE - Empty `data`
                 let res = ValidationResult::decode(&Rlp::new(&data)).map_err(|_| {
                     Error::UserOpSimulateValidationError {
                         message: "failed to decode eth_call revert data".to_string(),

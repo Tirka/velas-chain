@@ -1020,6 +1020,7 @@ impl TraceERPC for TraceErpcImpl {
     }
 }
 
+#[derive(Debug)]
 struct TxOutput {
     exit_reason: evm_state::ExitReason,
     exit_data: Vec<u8>,
@@ -1036,6 +1037,8 @@ fn call(
 ) -> Result<TxOutput, Error> {
     let outputs = call_many(meta, &[(tx, meta_keys)], saved_state, true)?;
 
+    log::warn!("outputs: {:?}", &outputs); // NOTE - outputs.exit_data == []
+
     let TxOutput {
         exit_reason,
         exit_data,
@@ -1047,6 +1050,8 @@ fn call(
         .expect("Should contain result for tx.");
 
     let (_, exit_data) = evm_rpc::handle_evm_exit_reason(exit_reason.clone(), exit_data)?;
+
+    log::warn!("exit_data: {:?}", &exit_data); // NOTE - outputs.exit_data == []
 
     Ok(TxOutput {
         exit_reason,
@@ -1123,6 +1128,7 @@ fn call_many(
     Ok(result)
 }
 
+// NOTE - check exit_data here
 #[instrument(skip(executor, bank))]
 fn call_inner(
     executor: &mut evm_state::Executor,
