@@ -77,7 +77,9 @@ impl AsyncRpcClient {
 
     pub async fn send_request(&self, request: RpcRequest, params: Value) -> ClientResult<Value> {
         let request_id = self.request_id.fetch_add(1, Ordering::Relaxed);
-        let request_json = request.build_request_json(request_id, params).to_string();
+        let request = request.build_request_json(request_id, params);
+        log::warn!("Request: {request}");
+        let request_json = request.to_string();
         match self._send_request(request_json).await {
             Ok(response) => {
                 let json: Value = dbg!(response.json().await?);

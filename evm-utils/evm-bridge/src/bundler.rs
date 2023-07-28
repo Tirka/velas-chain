@@ -155,12 +155,16 @@ impl Bundler {
         user_op: &UserOperation,
         entry_point: Address,
     ) -> EvmResult<ValidationResult> {
-        let prefix = hex::decode("ee219423").unwrap(); // TODO: constant
+        // let prefix = hex::decode("ee219423").unwrap(); // Vadim's stuff
+        let prefix = hex::decode("fbfb6b6c").unwrap(); // do_nope()
+
         let mut stream = RlpStream::new();
         stream.begin_list(1);
         stream.append(user_op);
+        
         let mut input = prefix;
         input.extend(stream.as_raw().iter());
+
         let rpc_tx = RPCTransaction {
             from: None, // TODO: bridge?
             to: Some(Hex(entry_point)),
@@ -168,7 +172,8 @@ impl Bundler {
             gas: None, // max gas
             gas_price: None,
             value: None,
-            input: Some(Bytes::from(input)),
+            // input: Some(Bytes::from(input)),
+            input: Some(Bytes::from(hex::decode("fbfb6b6c").unwrap())),
             nonce: None,
             hash: None,
             block_hash: None,
@@ -178,8 +183,13 @@ impl Bundler {
             r: None,
             s: None,
         };
+
+        let params = json!([rpc_tx, "latest"]);
+
+        log::warn!("Params: {params}");
+
         let result = rpc_client
-            .send::<Bytes>(RpcRequest::EthCall, json!([rpc_tx, "latest"]))
+            .send::<Bytes>(RpcRequest::EthCall, params)
             .await
             .err()
             .ok_or(Error::UserOpSimulateValidationError {
@@ -273,4 +283,17 @@ impl Bundler {
 
         meta.send_tx(tx, Default::default()).await
     }
+}
+
+#[test]
+fn eth_call_fnname() {
+    fn eth_abi_call(call: &str) -> String {
+        use sha3::{Digest, Keccak256};
+        let mut hasher = Keccak256::new();
+        hasher.update(call);
+        hex::encode(hasher.finalize())[0..8].to_string()
+    }
+
+    assert_eq!(eth_abi_call("double(int)"), "6740d36c");
+    assert_eq!(eth_abi_call("do_nope()"), "fbfb6b6c");
 }

@@ -138,7 +138,7 @@ impl Default for TestValidatorGenesis {
             geyser_plugin_config_files: Option::<Vec<PathBuf>>::default(),
             accounts_db_caching_enabled: bool::default(),
             deactivate_feature_set: HashSet::<Pubkey>::default(),
-	    evm_state_archive_enabled: false,
+	        evm_state_archive_enabled: false,
         }
     }
 }
