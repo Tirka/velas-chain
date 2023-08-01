@@ -161,7 +161,7 @@ impl Bundler {
         let mut stream = RlpStream::new();
         stream.begin_list(1);
         stream.append(user_op);
-        
+
         let mut input = prefix;
         input.extend(stream.as_raw().iter());
 
@@ -185,8 +185,6 @@ impl Bundler {
         };
 
         let params = json!([rpc_tx, "latest"]);
-
-        log::warn!("Params: {params}");
 
         let result = rpc_client
             .send::<Bytes>(RpcRequest::EthCall, params)

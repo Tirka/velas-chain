@@ -328,6 +328,7 @@ impl Executor {
 
         let clear_logs_on_error_enabled = self.feature_set.is_clear_logs_on_error_enabled();
         let config = self.config.to_evm_params();
+        log::error!("<not an error> Config: {:?}", &config);
         let transaction_context = TransactionContext::new(gas_price.as_u64(), caller);
         let execution_context = ExecutorContext::new(
             &mut self.evm_backend,

@@ -871,7 +871,7 @@ impl TraceERPC for TraceErpcImpl {
                     tx_hash,
                     true,
                     simulation_entrypoint(
-                        PrecompileSet::VelasClassic,
+                        PrecompileSet::VelasNext,
                         &evm_keyed_account,
                         &user_accounts,
                     ),

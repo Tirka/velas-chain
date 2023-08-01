@@ -154,10 +154,6 @@ fn test_test() {
     wait_finalization(&rpc_url, &[&json["result"]]);
 
     // create transaction with EntryPoint contract
-    
-    // Contract with empty method that will revert after 60 seconds since creation
-    // const ENTRY_POINT_CONTRACT: &str = "608060405234801561001057600080fd5b50610398806100206000396000f3fe608060405234801561001057600080fd5b506004361061002b5760003560e01c8063ee21942314610030575b600080fd5b61004a60048036038101906100459190610130565b61004c565b005b60006040518060c001604052806000815260200160008152602001600115158152602001600065ffffffffffff168152602001600065ffffffffffff168152602001604051806020016040528060008152508152509050600060405180604001604052806000815260200160008152509050818182836040517fe0cff05f0000000000000000000000000000000000000000000000000000000081526004016100f89493929190610316565b60405180910390fd5b600080fd5b600080fd5b600080fd5b600061016082840312156101275761012661010b565b5b81905092915050565b60006020828403121561014657610145610101565b5b600082013567ffffffffffffffff81111561016457610163610106565b5b61017084828501610110565b91505092915050565b6000819050919050565b61018c81610179565b82525050565b60008115159050919050565b6101a781610192565b82525050565b600065ffffffffffff82169050919050565b6101c8816101ad565b82525050565b600081519050919050565b600082825260208201905092915050565b60005b838110156102085780820151818401526020810190506101ed565b60008484015250505050565b6000601f19601f8301169050919050565b6000610230826101ce565b61023a81856101d9565b935061024a8185602086016101ea565b61025381610214565b840191505092915050565b600060c0830160008301516102766000860182610183565b5060208301516102896020860182610183565b50604083015161029c604086018261019e565b5060608301516102af60608601826101bf565b5060808301516102c260808601826101bf565b5060a083015184820360a08601526102da8282610225565b9150508091505092915050565b6040820160008201516102fd6000850182610183565b5060208201516103106020850182610183565b50505050565b600060e0820190508181036000830152610330818761025e565b905061033f60208301866102e7565b61034c60608301856102e7565b61035960a08301846102e7565b9594505050505056fea2646970667358221220bcbcc320bd54353dc872a2eb074a676694bea8e30070f979c506e92aeabda96664736f6c63430008120033";
-    
     // // SPDX-License-Identifier: GPL-3.0
     // pragma solidity >=0.6.12 <0.7.0;
     // contract EntryPoint {
@@ -165,7 +161,9 @@ fn test_test() {
     //         revert ("nope");
     //     }
     // }
-    const ENTRY_POINT_CONTRACT: &str = "6080604052348015600f57600080fd5b5060d98061001e6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063fbfb6b6c14602d575b600080fd5b60336035565b005b6040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260048152602001807f6e6f70650000000000000000000000000000000000000000000000000000000081525060200191505060405180910390fdfea2646970667358221220c2cb05baacde8edc2d0a78537d1470b5d95c726528cfddcdcd3a6664c79b207d64736f6c634300060c0033";
+    // let entry_point_contract: &str = "6080604052348015600f57600080fd5b5060d98061001e6000396000f3fe6080604052348015600f57600080fd5b506004361060285760003560e01c8063fbfb6b6c14602d575b600080fd5b60336035565b005b6040517f08c379a00000000000000000000000000000000000000000000000000000000081526004018080602001828103825260048152602001807f6e6f70650000000000000000000000000000000000000000000000000000000081525060200191505060405180910390fdfea2646970667358221220c2cb05baacde8edc2d0a78537d1470b5d95c726528cfddcdcd3a6664c79b207d64736f6c634300060c0033";
+
+    let entry_point_contract = include_str!("./entrypoint.bin").trim();
 
     let tx_create = evm_state::UnsignedTransaction {
         nonce: 0.into(),
@@ -173,7 +171,7 @@ fn test_test() {
         gas_limit: 300000.into(),
         action: evm_state::TransactionAction::Create,
         value: 0.into(),
-        input: hex::decode(ENTRY_POINT_CONTRACT).unwrap(),
+        input: hex::decode(entry_point_contract).unwrap(),
     }
     .sign(&evm_secret_key, Some(chain_id));
     let entry_point_address = tx_create.address().unwrap();
@@ -187,7 +185,7 @@ fn test_test() {
     let create_storage_ix = system_instruction::create_account(
         &alice.pubkey(),
         &big_tx_storage.pubkey(),
-        10000000,
+        100_000_000_000,
         tx_bytes.len() as u64,
         &solana_evm_loader_program::ID,
     );
@@ -198,40 +196,57 @@ fn test_test() {
     let json = dbg!(post_rpc(req, &rpc_url));
     wait_finalization(&rpc_url, &[&json["result"]]);
 
-    // // allocate EntryPoint contract [1/2]
-    // let blockhash = dbg!(get_blockhash(&rpc_url));
-    // let allocate = big_tx_allocate(big_tx_storage.pubkey(), dbg!(tx_bytes.len()));
-    // let write1 = big_tx_write(big_tx_storage.pubkey(), 0, tx_bytes[..700].to_vec());
-    // let ixs = vec![allocate, write1];
-    // let tx = Transaction::new_signed_with_payer(
-    //     &ixs,
-    //     Some(&alice.pubkey()),
-    //     &[&big_tx_storage, &alice],
-    //     blockhash,
-    // );
-    // let serialized_encoded_tx = bs58::encode(serialize(&tx).unwrap()).into_string();
-    // let req = json_req!("sendTransaction", json!([serialized_encoded_tx]));
-    // let json = dbg!(post_rpc(req, &rpc_url));
-    // wait_finalization(&rpc_url, &[&json["result"]]);
+    let blockhash = dbg!(get_blockhash(&rpc_url));
+    let allocate = big_tx_allocate(big_tx_storage.pubkey(), dbg!(tx_bytes.len()));
+    let ixs = vec![allocate];
+    let tx = Transaction::new_signed_with_payer(
+        &ixs,
+        Some(&alice.pubkey()),
+        &[&big_tx_storage, &alice],
+        blockhash,
+    );
+    let serialized_encoded_tx = bs58::encode(serialize(&tx).unwrap()).into_string();
+    let req = json_req!("sendTransaction", json!([serialized_encoded_tx]));
+    let json = dbg!(post_rpc(req, &rpc_url));
+    wait_finalization(&rpc_url, &[&json["result"]]);
 
-    // // execute EntryPoint contract [2/2]
-    // let blockhash = dbg!(get_blockhash(&rpc_url));
-    // let write2 = big_tx_write(big_tx_storage.pubkey(), 700, tx_bytes[700..].to_vec());
-    // let execute = big_tx_execute(big_tx_storage.pubkey(), None, FeePayerType::Evm);
-    // let ixs = vec![write2, execute];
-    // let tx = Transaction::new_signed_with_payer(
-    //     &ixs,
-    //     Some(&alice.pubkey()),
-    //     &[&big_tx_storage, &alice],
-    //     blockhash,
-    // );
-    // let serialized_encoded_tx = bs58::encode(serialize(&tx).unwrap()).into_string();
-    // let req = json_req!("sendTransaction", json!([serialized_encoded_tx]));
-    // let json = dbg!(post_rpc(req, &rpc_url));
-    // wait_finalization(&rpc_url, &[&json["result"]]);
+    const DEPLOY_CHUNK: usize = 700;
+    for i in 0..tx_bytes.len() / DEPLOY_CHUNK {
+        let slice_start = i * DEPLOY_CHUNK;
+        let slice_end = std::cmp::min((i + 1) * DEPLOY_CHUNK, tx_bytes.len());
+        let blockhash = dbg!(get_blockhash(&rpc_url));
+        let write1 = big_tx_write(
+            big_tx_storage.pubkey(),
+            0,
+            tx_bytes[slice_start..slice_end].to_vec(),
+        );
+        let ixs = vec![write1];
+        let tx = Transaction::new_signed_with_payer(
+            &ixs,
+            Some(&alice.pubkey()),
+            &[&big_tx_storage, &alice],
+            blockhash,
+        );
+        let serialized_encoded_tx = bs58::encode(serialize(&tx).unwrap()).into_string();
+        let req = json_req!("sendTransaction", json!([serialized_encoded_tx]));
+        let json = dbg!(post_rpc(req, &rpc_url));
+        wait_finalization(&rpc_url, &[&json["result"]]);
+    }
 
+    let blockhash = dbg!(get_blockhash(&rpc_url));
+    let execute = big_tx_execute(big_tx_storage.pubkey(), None, FeePayerType::Evm);
+    let ixs = vec![execute];
+    let tx = Transaction::new_signed_with_payer(
+        &ixs,
+        Some(&alice.pubkey()),
+        &[&big_tx_storage, &alice],
+        blockhash,
+    );
+    let serialized_encoded_tx = bs58::encode(serialize(&tx).unwrap()).into_string();
+    let req = json_req!("sendTransaction", json!([serialized_encoded_tx]));
+    let json = dbg!(post_rpc(req, &rpc_url));
+    wait_finalization(&rpc_url, &[&json["result"]]);
 
-    // lol? 
     let blockhash = dbg!(get_blockhash(&rpc_url));
     let allocate = big_tx_allocate(big_tx_storage.pubkey(), dbg!(tx_bytes.len()));
     let write1 = big_tx_write(big_tx_storage.pubkey(), 0, tx_bytes);
@@ -247,7 +262,6 @@ fn test_test() {
     let req = json_req!("sendTransaction", json!([serialized_encoded_tx]));
     let json = dbg!(post_rpc(req, &rpc_url));
     wait_finalization(&rpc_url, &[&json["result"]]);
-
 
     let mut bridge = EvmBridge::new_for_test(chain_id, vec![], rpc_url);
     let user_op = UserOperation {
