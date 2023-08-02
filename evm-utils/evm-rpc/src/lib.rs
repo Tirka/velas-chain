@@ -906,9 +906,9 @@ pub mod bridge {
 }
 
 pub mod bundler {
+    use super::*;
     use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
     use sha3::{Digest, Keccak256};
-    use super::*;
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
@@ -990,6 +990,7 @@ pub mod bundler {
         }
     }
 
+    // bundler scope
     #[rpc]
     pub trait BundlerERPC {
         type Metadata;

@@ -7,52 +7,23 @@ mod tx_filter;
 
 use log::*;
 use std::fs::File;
-use std::future::ready;
+use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use std::{
-    collections::{HashMap, HashSet},
-    net::SocketAddr,
-};
 
 use evm_rpc::bridge::BridgeERPC;
-use evm_rpc::bundler::{BundlerERPC, UserOperation};
+use evm_rpc::bundler::BundlerERPC;
 use evm_rpc::chain::ChainERPC;
-use evm_rpc::error::{Error, *};
 use evm_rpc::general::GeneralERPC;
-use evm_rpc::*;
 use evm_state::*;
-use sha3::{Digest, Keccak256};
 
-use jsonrpc_core::BoxFuture;
 use jsonrpc_http_server::jsonrpc_core::*;
 use jsonrpc_http_server::*;
 
-use snafu::ResultExt;
-
-use derivative::*;
-use solana_evm_loader_program::instructions::FeePayerType;
 use solana_evm_loader_program::scope::*;
-use solana_sdk::{
-    fee_calculator::DEFAULT_TARGET_LAMPORTS_PER_SIGNATURE,
-    instruction::{AccountMeta, Instruction},
-    pubkey::Pubkey,
-    signer::Signer,
-    signers::Signers,
-    system_instruction,
-    transaction::TransactionError,
-};
+use solana_sdk::fee_calculator::DEFAULT_TARGET_LAMPORTS_PER_SIGNATURE;
 
-use solana_client::{
-    client_error::{ClientError, ClientErrorKind},
-    rpc_config::*,
-    rpc_request::RpcResponseErrorData,
-    rpc_response::*,
-};
-
-use tracing_attributes::instrument;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{
     filter::{LevelFilter, Targets},
@@ -63,20 +34,10 @@ use ::tokio;
 
 use bridge::*;
 use middleware::ProxyMiddleware;
-use pool::{
-    worker_cleaner, worker_deploy, worker_signature_checker, EthPool, PooledTransaction,
-    SystemClock,
-};
-use rpc_client::AsyncRpcClient;
-use tx_filter::TxFilter;
+use pool::{worker_cleaner, worker_deploy, worker_signature_checker};
 
-use crate::bundler::Bundler;
-use rlp::Encodable;
-use secp256k1::Message;
-use solana_rpc::rpc::{BatchId, BatchStateMap};
+use crate::bridge::EvmBridge;
 use std::result::Result as StdResult;
-
-type EvmResult<T> = StdResult<T, evm_rpc::Error>;
 
 #[derive(Debug, structopt::StructOpt)]
 struct Args {
@@ -269,12 +230,10 @@ async fn main(args: Args) -> StdResult<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
-    use crate::AsyncRpcClient;
-    use crate::{BridgeErpcImpl, EthPool, EvmBridge, SystemClock};
+    use crate::{BridgeErpcImpl, EvmBridge};
     use evm_rpc::{BridgeERPC, Hex};
     use evm_state::Address;
     use secp256k1::SecretKey;
-    use solana_sdk::signature::Keypair;
     use std::str::FromStr;
     use std::sync::Arc;
 

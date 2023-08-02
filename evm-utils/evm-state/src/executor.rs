@@ -86,19 +86,19 @@ impl<'precompile> PrecompileSet for OwnedPrecompile<'precompile> {
 
 impl<'precompile> std::ops::Deref for OwnedPrecompile<'precompile> {
     type Target = BTreeMap<
-    H160,
-    Box<
-        dyn Fn(
-                &[u8],
-                Option<u64>,
-                Option<CallScheme>,
-                &Context,
-                bool,
-            ) -> Result<(PrecompileOutput, u64, LogEntry), PrecompileFailure>
-            + 'precompile,
-    >,
->;
-    
+        H160,
+        Box<
+            dyn Fn(
+                    &[u8],
+                    Option<u64>,
+                    Option<CallScheme>,
+                    &Context,
+                    bool,
+                ) -> Result<(PrecompileOutput, u64, LogEntry), PrecompileFailure>
+                + 'precompile,
+        >,
+    >;
+
     fn deref(&self) -> &Self::Target {
         &self.precompiles
     }
@@ -328,7 +328,6 @@ impl Executor {
 
         let clear_logs_on_error_enabled = self.feature_set.is_clear_logs_on_error_enabled();
         let config = self.config.to_evm_params();
-        log::error!("<not an error> Config: {:?}", &config);
         let transaction_context = TransactionContext::new(gas_price.as_u64(), caller);
         let execution_context = ExecutorContext::new(
             &mut self.evm_backend,
@@ -977,10 +976,8 @@ mod tests {
             assert!(backend.kvs().check_root_exist(first_root));
             if gc {
                 let hash = backend.kvs().purge_slot(slot).unwrap().unwrap();
-                backend
-                    .kvs()
-                    .gc_try_cleanup_account_hashes(&[hash]);
-                               // on gc it will be removed
+                backend.kvs().gc_try_cleanup_account_hashes(&[hash]);
+                // on gc it will be removed
                 assert!(!backend.kvs().check_root_exist(first_root));
             } else {
                 assert!(backend.kvs().check_root_exist(first_root));

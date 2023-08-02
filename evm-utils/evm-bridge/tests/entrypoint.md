@@ -1,4 +1,4 @@
-EntryPoint contract compiled in Remix IDE with solidity compiler 0.8.12 and optimization enabled.
+EntryPoint contract compiled in Remix IDE with solidity compiler 0.8.12 with optimization enabled.
 Source: https://github.com/eth-infinitism/account-abstraction/blob/9b5f2e4bb30a81aa30761749d9e2e43fee64c768/contracts/core/EntryPoint.sol
 
 ```sol

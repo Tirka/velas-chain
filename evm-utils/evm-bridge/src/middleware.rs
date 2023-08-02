@@ -14,7 +14,7 @@ use serde_json::Value;
 use solana_rpc::middleware::{patch_calls, restore_original_call};
 use solana_rpc::rpc::BatchId;
 
-use crate::EvmBridge;
+use crate::bridge::EvmBridge;
 
 async fn redirect(
     meta: Arc<EvmBridge>,

@@ -1895,6 +1895,7 @@ dependencies = [
 [[package]]
 name = "evm"
 version = "0.35.0"
+source = "git+https://github.com/velas/evm?tag=v0.35-with-traces#90a980bb9d7ccbb21b2897e71b889847f7beeade"
 dependencies = [
  "auto_impl",
  "environmental",
@@ -1997,6 +1998,7 @@ dependencies = [
 [[package]]
 name = "evm-core"
 version = "0.35.0"
+source = "git+https://github.com/velas/evm?tag=v0.35-with-traces#90a980bb9d7ccbb21b2897e71b889847f7beeade"
 dependencies = [
  "parity-scale-codec 3.4.0",
  "primitive-types 0.11.1",
@@ -2007,6 +2009,7 @@ dependencies = [
 [[package]]
 name = "evm-gasometer"
 version = "0.35.0"
+source = "git+https://github.com/velas/evm?tag=v0.35-with-traces#90a980bb9d7ccbb21b2897e71b889847f7beeade"
 dependencies = [
  "environmental",
  "evm-core",
@@ -2043,6 +2046,7 @@ dependencies = [
 [[package]]
 name = "evm-runtime"
 version = "0.35.0"
+source = "git+https://github.com/velas/evm?tag=v0.35-with-traces#90a980bb9d7ccbb21b2897e71b889847f7beeade"
 dependencies = [
  "auto_impl",
  "environmental",

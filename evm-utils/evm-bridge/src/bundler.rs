@@ -1,14 +1,12 @@
 use crate::bridge::{from_client_error, EvmBridge, EvmResult};
 use crate::rpc_client::AsyncRpcClient;
 use evm_rpc::bundler::UserOperation;
-use evm_rpc::{Bytes, Error, FormatHex, Hex, RPCTransaction};
+use evm_rpc::{Bytes, Error, Hex, RPCTransaction};
 use evm_state::{Address, Gas};
-use log::error;
 use primitive_types::{H256, U256};
 use rlp::{Decodable, DecoderError, Encodable, Rlp, RlpStream};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use snafu::ResultExt;
+use serde_json::json;
 use solana_client::client_error::ClientErrorKind;
 use solana_client::rpc_request::{RpcError, RpcRequest, RpcResponseErrorData};
 use solana_evm_loader_program::scope::evm;
@@ -155,8 +153,8 @@ impl Bundler {
         user_op: &UserOperation,
         entry_point: Address,
     ) -> EvmResult<ValidationResult> {
-        // let prefix = hex::decode("ee219423").unwrap(); // Vadim's stuff
-        let prefix = hex::decode("fbfb6b6c").unwrap(); // do_nope()
+        // let prefix = hex::decode("fbfb6b6c").unwrap(); // do_nope()
+        let prefix = hex::decode("f138d626").unwrap(); // simulateValidation(UserOperation)
 
         let mut stream = RlpStream::new();
         stream.begin_list(1);
@@ -285,13 +283,14 @@ impl Bundler {
 
 #[test]
 fn eth_call_fnname() {
-    fn eth_abi_call(call: &str) -> String {
+    fn call_hash(call: &str) -> String {
         use sha3::{Digest, Keccak256};
         let mut hasher = Keccak256::new();
         hasher.update(call);
         hex::encode(hasher.finalize())[0..8].to_string()
     }
 
-    assert_eq!(eth_abi_call("double(int)"), "6740d36c");
-    assert_eq!(eth_abi_call("do_nope()"), "fbfb6b6c");
+    assert_eq!(call_hash("double(int)"), "6740d36c");
+    assert_eq!(call_hash("do_nope()"), "fbfb6b6c");
+    assert_eq!(call_hash("simulateValidation(UserOperation)"), "f138d626");
 }

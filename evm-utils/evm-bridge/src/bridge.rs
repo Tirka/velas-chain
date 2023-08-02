@@ -1,13 +1,9 @@
 use crate::bundler::Bundler;
-use crate::pool::{
-    worker_cleaner, worker_deploy, worker_signature_checker, EthPool, PooledTransaction,
-    SystemClock,
-};
+use crate::pool::{EthPool, PooledTransaction, SystemClock};
 use crate::rpc_client::AsyncRpcClient;
 use crate::tx_filter::TxFilter;
 
 use std::{
-    borrow::Borrow,
     collections::{HashMap, HashSet},
     future::ready,
     result::Result as StdResult,
@@ -16,7 +12,6 @@ use std::{
     time::Duration,
 };
 
-use borsh::BorshDeserialize;
 use derivative::*;
 use evm_rpc::bundler::UserOperation;
 use evm_rpc::error::{Error, *};
