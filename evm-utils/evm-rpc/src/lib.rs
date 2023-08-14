@@ -3,7 +3,7 @@
 use {
     jsonrpc_core::BoxFuture,
     jsonrpc_derive::rpc,
-    primitive_types::{H256, U256},
+    primitive_types::{H160, H256, U256},
     serde::{Deserialize, Serialize},
     snafu::ResultExt,
     std::{collections::HashMap, fmt},
@@ -899,6 +899,136 @@ pub mod bridge {
 
         #[rpc(meta, name = "eth_getCompilers")]
         fn compilers(&self, meta: Self::Metadata) -> Result<Vec<String>, Error>;
+    }
+}
+
+pub mod bundler {
+    use super::*;
+
+    /// ERC-4337 User Operation
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UserOperation {
+        pub sender: Hex<Address>,
+        pub nonce: Hex<U256>,
+        pub init_code: Bytes,
+        pub call_data: Bytes,
+        pub call_gas_limit: Hex<U256>,
+        pub verification_gas_limit: Hex<U256>,
+        pub pre_verification_gas: Hex<U256>,
+        pub max_fee_per_gas: Hex<U256>,
+        pub max_priority_fee_per_gas: Hex<U256>,
+        pub paymaster_and_data: Bytes,
+        pub signature: Bytes,
+    }
+
+    /// UserOperation Gas parameters
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct GasParameters {
+        pub call_gas_limit: Hex<U256>,
+        pub pre_verification_gas: Hex<U256>,
+        pub verification_gas_limit: Hex<U256>,
+    }
+
+    /// UserOperation transaction information
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UserOperationInfo {
+        pub user_operation: UserOperation,
+        pub entry_point: Hex<H160>,
+        pub block_number: Hex<u64>,
+        pub block_hash: Hex<H256>,
+        pub transaction_hash: Hex<H256>,
+    }
+
+    /// Receipt Information
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct UserOperationReceiptInfo {
+        /// user op hash
+        pub user_op_hash: Hex<H256>,
+
+        /// Sender
+        pub sender: (),
+        pub nonce: (),
+        pub actual_gas_cost: (),
+        pub actual_gas_used: (),
+        pub success: (),
+        pub logs: (),
+        pub receipt: (),
+    }
+
+    #[rpc]
+    pub trait BundlerERPC {
+        type Metadata;
+
+        /// Returns an array of the entryPoint addresses supported by the client
+        #[rpc(meta, name = "eth_supportedEntryPoints")]
+        fn supported_entry_points(
+            &self,
+            meta: Self::Metadata,
+        ) -> BoxFuture<Result<Vec<Hex<H160>>, Error>>;
+
+        /// Generates and returns an estimate of how much gas is necessary to allow the transaction to complete.
+        #[rpc(meta, name = "eth_estimateUserOperationGas")]
+        fn estimate_user_operation_gas(
+            &self,
+            meta: Self::Metadata,
+            user_operation: UserOperation,
+        ) -> BoxFuture<Result<GasParameters, Error>>;
+
+        /// Signs and submits a transaction.
+        #[rpc(meta, name = "eth_sendUserOperation")]
+        fn send_user_operation(
+            &self,
+            meta: Self::Metadata,
+            user_operation: UserOperation,
+            entry_point: Address,
+        ) -> BoxFuture<Result<Hex<H256>, Error>>;
+
+        /// Returns the information about a transaction requested by transaction hash.
+        #[rpc(meta, name = "eth_getUserOperationByHash")]
+        fn user_operation_by_hash(
+            &self,
+            meta: Self::Metadata,
+            userop_hash: Hex<H256>,
+        ) -> BoxFuture<Result<UserOperationInfo, Error>>;
+
+        /// Returns the receipt of a transaction by transaction hash.
+        #[rpc(meta, name = "eth_getUserOperationReceipt")]
+        fn user_operation_receipt(
+            &self,
+            meta: Self::Metadata,
+            tx_hash: Hex<H256>,
+        ) -> BoxFuture<Result<(), Error>>;
+
+        /********************************************************************************
+                                    ---- DEBUG SCOPE ----
+        ********************************************************************************/
+        /// Clears the bundler mempool and reputation data of paymasters/accounts/factories/aggregators.
+        #[rpc(meta, name = "debug_bundler_clearState")]
+        fn bundler_clear_state(&self, meta: Self::Metadata) -> BoxFuture<Result<(), Error>>;
+
+        /// Returns the current mempool
+        #[rpc(meta, name = "debug_bundler_dumpMempool")]
+        fn bundler_dump_mempool(&self, meta: Self::Metadata) -> BoxFuture<Result<(), Error>>;
+
+        /// Forces the bundler to execute the entire current mempool.
+        #[rpc(meta, name = "debug_bundler_sendBundleNow")]
+        fn bundler_send_bundle_now(&self, meta: Self::Metadata) -> BoxFuture<Result<(), Error>>;
+
+        /// Toggles bundling mode between 'auto' and 'manual'
+        #[rpc(meta, name = "debug_bundler_setBundlingMode")]
+        fn bundler_set_bundling_mode(&self, meta: Self::Metadata) -> BoxFuture<Result<(), Error>>;
+
+        /// Sets reputation of given addresses.
+        #[rpc(meta, name = "debug_bundler_setReputation")]
+        fn bundler_set_reputation(&self, meta: Self::Metadata) -> BoxFuture<Result<(), Error>>;
+
+        /// Returns the reputation data of all observed addresses.
+        #[rpc(meta, name = "debug_bundler_dumpReputation")]
+        fn bundler_dump_reputation(&self, meta: Self::Metadata) -> BoxFuture<Result<(), Error>>;
     }
 }
 
