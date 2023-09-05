@@ -4,6 +4,7 @@ pub mod error;
 pub mod extensions;
 pub mod ledger;
 pub mod routines;
+pub mod version;
 
 use {
     clap::Parser,

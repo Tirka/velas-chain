@@ -1,8 +1,12 @@
-use {evm_state::BlockNum, solana_storage_bigtable::DEFAULT_INSTANCE_NAME, std::path::PathBuf};
+use {
+    crate::version::get_version, evm_state::BlockNum,
+    solana_storage_bigtable::DEFAULT_INSTANCE_NAME, std::path::PathBuf,
+};
 
 const DEFAULT_BIGTABLE_LIMIT: &str = "150000";
 
 #[derive(clap::Parser)]
+#[clap(version = get_version())]
 pub struct Cli {
     #[clap(subcommand)]
     pub subcommand: Command,
@@ -235,25 +239,25 @@ pub struct RepeatNativeArgs {
 
 #[derive(clap::Args)]
 pub struct ScanEvmStateRootsArgs {
-    #[arg(short, long)]
+    #[arg(long, value_name = "NUM")]
     pub start: BlockNum,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub end_exclusive: BlockNum,
 
-    #[arg(short, long, value_name = "DIR")]
+    #[arg(long, value_name = "DIR", value_hint = clap::ValueHint::DirPath)]
     pub evm_state_path: PathBuf,
 
-    #[arg(short, long)]
+    #[arg(long, value_name = "NUM")]
     pub workers: u16,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub secondary: bool,
 
-    #[arg(short, long)]
+    #[arg(long)]
     pub gc: bool,
 
-    #[arg(short, long, value_name = "FILE")]
+    #[arg(long, value_name = "FILE", value_hint = clap::ValueHint::FilePath)]
     pub rangemap_json: PathBuf,
 }
 
